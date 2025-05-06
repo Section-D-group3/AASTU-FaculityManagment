@@ -11,7 +11,7 @@ const registerUser = async (req, res, next) => {
     await prisma.user.create({
       data: {
         name: username,
-        email: username + "@example.com", // Replace with real email from frontend
+        email: username + "@example.com", 
         password: hashedPassword,
         role: "student",
       },

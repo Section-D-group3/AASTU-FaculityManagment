@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node server.js",
     "build": "npm install && prisma generate",
-    "test:auth": "jest tests/unit/controllers/auth.controller.test.js"
+    "test:auth": "jest tests/unit/controllers/auth.controller.test.js",
+    "test:communities": "jest tests/unit/controllers/communities.controller.test.js"
   },
   "dependencies": {
     "@prisma/client": "^6.3.1",
