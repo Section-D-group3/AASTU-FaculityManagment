@@ -1,36 +1,38 @@
-
-
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const db = require('../../../config/db'); 
+const prisma = require('../../../config/db');
 const { registerUser, loginUser } = require('../../../controllers/auth.controller');
 
-// Mock dependencies
 jest.mock('bcrypt');
 jest.mock('jsonwebtoken');
 jest.mock('../../../config/db', () => ({
-  query: jest.fn(),
+  user: {
+    create: jest.fn(),
+    findUnique: jest.fn(),
+  },
 }));
 
-describe('Auth Controller', () => {
+describe('Auth Controller with Prisma', () => {
   describe('registerUser', () => {
     it('should hash the password and register the user', async () => {
-      // Mock request, response, and next
       const req = { body: { username: 'testuser', password: 'testpassword' } };
       const res = { status: jest.fn(() => res), json: jest.fn() };
       const next = jest.fn();
 
-      // Mock bcrypt and DB behavior
       bcrypt.hash.mockResolvedValue('hashed_password');
-      db.query.mockResolvedValue({}); // Simulate DB insertion
+      prisma.user.create.mockResolvedValue({});
 
       await registerUser(req, res, next);
 
       expect(bcrypt.hash).toHaveBeenCalledWith('testpassword', 10);
-      expect(db.query).toHaveBeenCalledWith(
-        'INSERT INTO users (username, password) VALUES (?, ?)',
-        ['testuser', 'hashed_password']
-      );
+      expect(prisma.user.create).toHaveBeenCalledWith({
+        data: {
+          name: 'testuser',
+          email: 'testuser@example.com',
+          password: 'hashed_password',
+          role: 'student',
+        },
+      });
       expect(res.status).toHaveBeenCalledWith(201);
       expect(res.json).toHaveBeenCalledWith({ message: 'User registered successfully' });
     });
@@ -38,22 +40,22 @@ describe('Auth Controller', () => {
 
   describe('loginUser', () => {
     it('should validate the password and return a JWT token', async () => {
-      // Mock request, response, and next
       const req = { body: { username: 'testuser', password: 'testpassword' } };
       const res = { status: jest.fn(() => res), json: jest.fn() };
       const next = jest.fn();
 
-      // Mock bcrypt, jwt, and DB behavior
-      const mockUser = { id: 1, username: 'testuser', password: 'hashed_password' };
+      const mockUser = { id: '123', email: 'testuser@example.com', password: 'hashed_password' };
+      prisma.user.findUnique.mockResolvedValue(mockUser);
       bcrypt.compare.mockResolvedValue(true);
       jwt.sign.mockReturnValue('mocked_token');
-      db.query.mockResolvedValue([mockUser]); // Simulate DB query
 
       await loginUser(req, res, next);
 
-      expect(db.query).toHaveBeenCalledWith('SELECT * FROM users WHERE username = ?', ['testuser']);
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { email: 'testuser@example.com' },
+      });
       expect(bcrypt.compare).toHaveBeenCalledWith('testpassword', 'hashed_password');
-      expect(jwt.sign).toHaveBeenCalledWith({ userId: 1 }, 'your_jwt_secret', { expiresIn: '1h' });
+      expect(jwt.sign).toHaveBeenCalledWith({ userId: '123' }, 'your_jwt_secret', { expiresIn: '1h' });
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({ token: 'mocked_token' });
     });
@@ -63,7 +65,7 @@ describe('Auth Controller', () => {
       const res = { status: jest.fn(() => res), json: jest.fn() };
       const next = jest.fn();
 
-      db.query.mockResolvedValue([]); // No user found
+      prisma.user.findUnique.mockResolvedValue(null);
 
       await loginUser(req, res, next);
 
@@ -76,9 +78,9 @@ describe('Auth Controller', () => {
       const res = { status: jest.fn(() => res), json: jest.fn() };
       const next = jest.fn();
 
-      const mockUser = { id: 1, username: 'testuser', password: 'hashed_password' };
-      db.query.mockResolvedValue([mockUser]); // User found
-      bcrypt.compare.mockResolvedValue(false); // Password mismatch
+      const mockUser = { id: '123', email: 'testuser@example.com', password: 'hashed_password' };
+      prisma.user.findUnique.mockResolvedValue(mockUser);
+      bcrypt.compare.mockResolvedValue(false);
 
       await loginUser(req, res, next);
 
