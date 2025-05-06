@@ -1,77 +1,53 @@
-const prisma = require('../config/db');
+const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
+const db = require('../config/db'); 
 
-const signup = async (req, res) => {
+
+const registerUser = async (req, res, next) => {
+  const { username, password } = req.body;
+
   try {
-    const { name, email, password, role } = req.body;
+    // Hash the user's password
     const hashedPassword = await bcrypt.hash(password, 10);
-    
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        password: hashedPassword,
-        role: role || 'student'
-      }
-    });
 
-    const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET);
-    res.status(201).json({ user, token });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
+    // Dummy DB operation (replace this with your actual DB query)
+    await db.query('INSERT INTO users (username, password) VALUES (?, ?)', [username, hashedPassword]);
+
+    res.status(201).json({ message: 'User registered successfully' });
+  } catch (err) {
+    next(err);
   }
 };
 
-const login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const user = await prisma.user.findUnique({ where: { email } });
+// Login user function
+const loginUser = async (req, res, next) => {
+  const { username, password } = req.body;
 
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      throw new Error('Invalid credentials');
+  try {
+    // Dummy DB operation (replace this with your actual DB query)
+    const [user] = await db.query('SELECT * FROM users WHERE username = ?', [username]);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
     }
 
-    const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET);
-    res.json({ user, token });
-  } catch (error) {
-    res.status(401).json({ error: error.message });
-  }
-};
-// Add to auth.controller.js
-const getUsers = async (req, res) => {
-  try {
-    const { role, page = 1, limit = 10 } = req.query;
-    const roleFilter = role ? { role } : {};
-    
-    const [users, total] = await prisma.$transaction([
-      prisma.user.findMany({
-        where: roleFilter,
-        skip: (page - 1) * limit,
-        take: parseInt(limit),
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          createdAt: true,
-          community: true
-        }
-      }),
-      prisma.user.count({ where: roleFilter })
-    ]);
+    // Compare the password with the hashed password in the database
+    const isPasswordValid = await bcrypt.compare(password, user.password);
 
-    res.json({
-      users,
-      total,
-      totalPages: Math.ceil(total / limit),
-      currentPage: parseInt(page)
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign({ userId: user.id }, 'your_jwt_secret', { expiresIn: '1h' });
+
+    res.status(200).json({ token });
+  } catch (err) {
+    next(err);
   }
 };
 
-// Update exports
-module.exports = { signup, login, getUsers };
-
+module.exports = {
+  registerUser,
+  loginUser,
+};

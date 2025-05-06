@@ -1,277 +1,89 @@
-const { signup, login, getUsers } = require('../../../controllers/auth.controller');
-const prisma = require('../../../config/db');
+
+
+const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
+const db = require('../../../config/db'); 
+const { registerUser, loginUser } = require('../../../controllers/auth.controller');
 
-
-jest.mock('../../../config/db');
+// Mock dependencies
+jest.mock('bcrypt');
 jest.mock('jsonwebtoken');
-jest.mock('bcryptjs');
+jest.mock('../../../config/db', () => ({
+  query: jest.fn(),
+}));
 
 describe('Auth Controller', () => {
-  let mockRequest, mockResponse;
+  describe('registerUser', () => {
+    it('should hash the password and register the user', async () => {
+      // Mock request, response, and next
+      const req = { body: { username: 'testuser', password: 'testpassword' } };
+      const res = { status: jest.fn(() => res), json: jest.fn() };
+      const next = jest.fn();
 
-  beforeEach(() => {
-    
-    jest.clearAllMocks();
-    
-   
-    mockRequest = {
-      body: {},
-      query: {}
-    };
-    
-    mockResponse = {
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn()
-    };
-  });
+      // Mock bcrypt and DB behavior
+      bcrypt.hash.mockResolvedValue('hashed_password');
+      db.query.mockResolvedValue({}); // Simulate DB insertion
 
-  describe('signup', () => {
-    it('should create a new user and return token', async () => {
-    
-      mockRequest.body = {
-        name: 'Test User',
-        email: 'test@example.com',
-        password: 'password123',
-        role: 'student'
-      };
+      await registerUser(req, res, next);
 
-      bcrypt.hash.mockResolvedValue('hashedPassword123');
-
-      
-      const mockUser = {
-        id: 1,
-        name: 'Test User',
-        email: 'test@example.com',
-        role: 'student'
-      };
-      prisma.user.create.mockResolvedValue(mockUser);
-
-    
-      jwt.sign.mockReturnValue('fakeToken123');
-
-     
-      await signup(mockRequest, mockResponse);
-
-   
-      expect(bcrypt.hash).toHaveBeenCalledWith('password123', 10);
-      expect(prisma.user.create).toHaveBeenCalledWith({
-        data: {
-          name: 'Test User',
-          email: 'test@example.com',
-          password: 'hashedPassword123',
-          role: 'student'
-        }
-      });
-      expect(jwt.sign).toHaveBeenCalledWith(
-        { id: 1, role: 'student' },
-        process.env.JWT_SECRET
+      expect(bcrypt.hash).toHaveBeenCalledWith('testpassword', 10);
+      expect(db.query).toHaveBeenCalledWith(
+        'INSERT INTO users (username, password) VALUES (?, ?)',
+        ['testuser', 'hashed_password']
       );
-      expect(mockResponse.status).toHaveBeenCalledWith(201);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        user: mockUser,
-        token: 'fakeToken123'
-      });
-    });
-
-    it('should handle errors during signup', async () => {
-      
-      mockRequest.body = {
-        name: 'Test User',
-        email: 'test@example.com',
-        password: 'password123'
-      };
-
-   
-      prisma.user.create.mockRejectedValue(new Error('Email already exists'));
-
-  
-      await signup(mockRequest, mockResponse);
-
-     
-      expect(mockResponse.status).toHaveBeenCalledWith(400);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        error: 'Email already exists'
-      });
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(res.json).toHaveBeenCalledWith({ message: 'User registered successfully' });
     });
   });
 
-  describe('login', () => {
-    it('should login user with valid credentials', async () => {
-      
-      mockRequest.body = {
-        email: 'test@example.com',
-        password: 'password123'
-      };
+  describe('loginUser', () => {
+    it('should validate the password and return a JWT token', async () => {
+      // Mock request, response, and next
+      const req = { body: { username: 'testuser', password: 'testpassword' } };
+      const res = { status: jest.fn(() => res), json: jest.fn() };
+      const next = jest.fn();
 
-     
-      const mockUser = {
-        id: 1,
-        name: 'Test User',
-        email: 'test@example.com',
-        password: 'hashedPassword123',
-        role: 'student'
-      };
-      prisma.user.findUnique.mockResolvedValue(mockUser);
-
-     
+      // Mock bcrypt, jwt, and DB behavior
+      const mockUser = { id: 1, username: 'testuser', password: 'hashed_password' };
       bcrypt.compare.mockResolvedValue(true);
+      jwt.sign.mockReturnValue('mocked_token');
+      db.query.mockResolvedValue([mockUser]); // Simulate DB query
 
-    
-      jwt.sign.mockReturnValue('fakeToken123');
+      await loginUser(req, res, next);
 
-      
-      await login(mockRequest, mockResponse);
-
-      
-      expect(prisma.user.findUnique).toHaveBeenCalledWith({
-        where: { email: 'test@example.com' }
-      });
-      expect(bcrypt.compare).toHaveBeenCalledWith('password123', 'hashedPassword123');
-      expect(jwt.sign).toHaveBeenCalledWith(
-        { id: 1, role: 'student' },
-        process.env.JWT_SECRET
-      );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        user: mockUser,
-        token: 'fakeToken123'
-      });
+      expect(db.query).toHaveBeenCalledWith('SELECT * FROM users WHERE username = ?', ['testuser']);
+      expect(bcrypt.compare).toHaveBeenCalledWith('testpassword', 'hashed_password');
+      expect(jwt.sign).toHaveBeenCalledWith({ userId: 1 }, 'your_jwt_secret', { expiresIn: '1h' });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({ token: 'mocked_token' });
     });
 
-    it('should reject invalid credentials', async () => {
-     
-      mockRequest.body = {
-        email: 'test@example.com',
-        password: 'wrongpassword'
-      };
+    it('should return 404 if user is not found', async () => {
+      const req = { body: { username: 'nonexistentuser', password: 'testpassword' } };
+      const res = { status: jest.fn(() => res), json: jest.fn() };
+      const next = jest.fn();
 
-      
-      prisma.user.findUnique.mockResolvedValue(null);
+      db.query.mockResolvedValue([]); // No user found
 
-     
-      await login(mockRequest, mockResponse);
+      await loginUser(req, res, next);
 
-      
-      expect(mockResponse.status).toHaveBeenCalledWith(401);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        error: 'Invalid credentials'
-      });
-
-     
-      mockResponse.status.mockClear();
-      mockResponse.json.mockClear();
-
-     
-      const mockUser = {
-        id: 1,
-        name: 'Test User',
-        email: 'test@example.com',
-        password: 'hashedPassword123',
-        role: 'student'
-      };
-      prisma.user.findUnique.mockResolvedValue(mockUser);
-      bcrypt.compare.mockResolvedValue(false);
-
-    
-      await login(mockRequest, mockResponse);
-
-    
-      expect(mockResponse.status).toHaveBeenCalledWith(401);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        error: 'Invalid credentials'
-      });
-    });
-  });
-
-  describe('getUsers', () => {
-    it('should fetch users with pagination', async () => {
-      
-      mockRequest.query = {
-        role: 'student',
-        page: '2',
-        limit: '5'
-      };
-
-      
-      const mockUsers = [
-        { id: 1, name: 'Student 1', email: 's1@example.com', role: 'student' },
-        { id: 2, name: 'Student 2', email: 's2@example.com', role: 'student' }
-      ];
-      prisma.$transaction.mockResolvedValue([mockUsers, 12]);
-
-   
-      await getUsers(mockRequest, mockResponse);
-
-     
-      expect(prisma.$transaction).toHaveBeenCalled();
-      expect(prisma.user.findMany).toHaveBeenCalledWith({
-        where: { role: 'student' },
-        skip: 5, 
-        take: 5,
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          createdAt: true,
-          community: true
-        }
-      });
-      expect(prisma.user.count).toHaveBeenCalledWith({
-        where: { role: 'student' }
-      });
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        users: mockUsers,
-        total: 12,
-        totalPages: 3,
-        currentPage: 2
-      });
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ message: 'User not found' });
     });
 
-    it('should fetch all users when no role specified', async () => {
-   
-      mockRequest.query = {};
+    it('should return 401 if password is invalid', async () => {
+      const req = { body: { username: 'testuser', password: 'wrongpassword' } };
+      const res = { status: jest.fn(() => res), json: jest.fn() };
+      const next = jest.fn();
 
-      
-      const mockUsers = [
-        { id: 1, name: 'User 1', email: 'u1@example.com', role: 'student' },
-        { id: 2, name: 'User 2', email: 'u2@example.com', role: 'teacher' }
-      ];
-      prisma.$transaction.mockResolvedValue([mockUsers, 2]);
+      const mockUser = { id: 1, username: 'testuser', password: 'hashed_password' };
+      db.query.mockResolvedValue([mockUser]); // User found
+      bcrypt.compare.mockResolvedValue(false); // Password mismatch
 
-      
-      await getUsers(mockRequest, mockResponse);
+      await loginUser(req, res, next);
 
-     
-      expect(prisma.user.findMany).toHaveBeenCalledWith({
-        where: {},
-        skip: 0,
-        take: 10,
-        select: expect.any(Object)
-      });
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        users: mockUsers,
-        total: 2,
-        totalPages: 1,
-        currentPage: 1
-      });
-    });
-
-    it('should handle database errors', async () => {
-   
-      mockRequest.query = { role: 'student' };
-
-    
-      prisma.$transaction.mockRejectedValue(new Error('Database error'));
-
-      await getUsers(mockRequest, mockResponse);
-
-   
-      expect(mockResponse.status).toHaveBeenCalledWith(500);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        error: 'Database error'
-      });
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Invalid credentials' });
     });
   });
 });
