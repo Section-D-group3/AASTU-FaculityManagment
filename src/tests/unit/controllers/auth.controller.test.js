@@ -55,7 +55,7 @@ describe('Auth Controller with Prisma', () => {
         where: { email: 'testuser@example.com' },
       });
       expect(bcrypt.compare).toHaveBeenCalledWith('testpassword', 'hashed_password');
-      expect(jwt.sign).toHaveBeenCalledWith({ userId: '123' }, 'your_jwt_secret', { expiresIn: '1h' });
+      expect(jwt.sign).toHaveBeenCalledWith({ userId: '123' }, 'natanaddisabebeabegazweldetsadik', { expiresIn: '1h' });
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({ token: 'mocked_token' });
     });
