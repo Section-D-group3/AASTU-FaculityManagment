@@ -11,7 +11,8 @@
      "test:news": "jest tests/unit/controllers/news.controller.test.js",
       "testInt:auth": "jest tests/integration/auth.routes.test.js",
       "testInt:community": "jest tests/integration/commuity.route.test.js",
-      "testInt:news": "jest tests/integration/news.route.test.js"
+      "testInt:news": "jest tests/integration/news.route.test.js",
+      "test:acceptance" :"jest tests/acceptance.test"
   },
   "dependencies": {
     "@prisma/client": "^6.3.1",
